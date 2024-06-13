@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         Batch Processor for BANCV
+// @name         Batch Processor for BANC
 // @namespace    KrzysztofKruk-BANC
 // @version      0.1
 // @description  Batch processing segments in BANC
