@@ -80,8 +80,9 @@ function addActionsMenu() {
   })
 
   const topBar = document.getElementsByClassName('neuroglancer-viewer-top-row')[0]
-  const undoButton = document.getElementById('neuroglancer-undo-button')
-  topBar.insertBefore(menu, undoButton)
+  const target = document.getElementsByClassName('neuroglancer-annotation-tool-status')[0]
+  
+  topBar.insertBefore(menu, target)
 
   addActionsEvents()
 }
