@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Batch Processor for BANC
 // @namespace    KrzysztofKruk-BANC
-// @version      0.1
+// @version      0.2
 // @description  Batch processing segments in BANC
 // @author       Krzysztof Kruk
 // @match        https://spelunker.cave-explorer.org/*
@@ -73,7 +73,7 @@ function addActionsMenu() {
       menu.add(optgroup)
       optionsCounter = 0
     }
-    else {
+    else if (!batchProcessorOptionsFromLS || batchProcessorOptionsFromLS.includes(option[1])) {
       optgroup.appendChild(new Option(option[0], option[1]))
       optionsCounter++
     }
@@ -172,20 +172,8 @@ addActionsEvents.okCallback = function () {
 function actionsHandler(e) {
   const statusBar = document.querySelectorAll('.neuroglancer-segment-list')[1]
   const segments = statusBar.getElementsByClassName('neuroglancer-segment-list-entry-id')
-  /*
-    .lightbulb.complete - completed and identified
-    .lightbulb.unlabeled - completed, but not identified
-    .lightbulb - normal
-    .lightbulb.error.outdated - outdated
-    .lightbulb.error - unknown
-  */
 
   const all = []
-  // const identified = []
-  // const completed = []
-  // const normal = []
-  // const outdated = []
-  // const unknown = []
   const visible = []
   const hidden = []
 
@@ -212,70 +200,6 @@ function actionsHandler(e) {
       changeColor(all)
       break
 
-    case 'find-common-partners-visible':
-      findCommon(visible)
-      break
-
-    case 'find-partners-visible': // DEV only
-      findCommon(visible, true)
-      break
-
-    case 'show-neuropils-coverage-visible':
-      showNeuropilsCoverage(visible)
-      break
-    case 'show-neuropils-coverage-all':
-      showNeuropilsCoverage(all)
-      break
-    
-    case 'show-statuses-and-labels-visible':
-      showStatusesAndLabels(visible)
-      break
-    case 'show-statuses-and-labels-all':
-      showStatusesAndLabels(all)
-      break
-    
-    case 'get-synaptic-partners':
-      getSynapticPartners(visible)
-      break
-
-    case 'show-identified-only':
-      show(identified, segments)
-      break
-    case 'show-completed-only':
-      show(completed, segments)
-      break
-    case 'show-incompleted-only':
-      show(normal, segments)
-      break
-    case 'Show outdated-only':
-      show(outdated, segments)
-      break
-
-    case 'hide-identified':
-      hide(identified)
-      break
-    case 'hide-completed':
-      hide(completed)
-      break
-    case 'hide-incompleted':
-      hide(normal)
-      break
-    case 'hide-outdated':
-      hide(outdated)
-      break
-
-    case 'open-identified-in-new-tab':
-      openInNewTab(identified)
-      break
-    case 'open-completed-in-new-tab':
-      openInNewTab(completed)
-      break
-    case 'open-incompleted-in-new-tab':
-      openInNewTab(normal)
-      break
-    case 'open-outdated-in-new-tab':
-      openInNewTab(outdated)
-      break
     case 'open-visible-in-new-tab':
       openInNewTab(visible)
       break
@@ -283,18 +207,6 @@ function actionsHandler(e) {
       openInNewTab(hidden)
       break
 
-    case 'remove-identified':
-      remove(identified)
-      break
-    case 'remove-completed':
-      remove(completed)
-      break
-    case 'remove-incompleted':
-      remove(normal)
-      break
-    case 'remove-outdated':
-      remove(outdated)
-      break
     case 'remove-visible':
       remove(visible)
       break
@@ -302,18 +214,6 @@ function actionsHandler(e) {
       remove(hidden)
       break
     
-    case 'copy-identified':
-      copy(identified)
-      break
-    case 'copy-completed':
-      copy(completed)
-      break
-    case 'copy-incompleted':
-      copy(normal)
-      break
-    case 'copy-outdated':
-      copy(outdated)
-      break
     case 'copy-visible':
       copy(visible)
       break
@@ -323,107 +223,57 @@ function actionsHandler(e) {
   }
 }
 
-function hide(type) {
-  type.forEach(segment => {
-    const checkbox = segment.getElementsByClassName('segment-checkbox')[0]
-    if (checkbox.checked) {
-      checkbox.click()
-    }
-  })
-}
-
-function show(type, allSegments) {
-  hideAll(allSegments)
-  type.forEach(segment => {
-    const checkbox = segment.getElementsByClassName('segment-checkbox')[0]
-    if (!checkbox.checked) {
-      checkbox.click()
-    }
-  })
-}
-
-
-function hideAll(segments) {
-  segments.forEach(segment => {
-    const checkbox = segment.getElementsByClassName('segment-checkbox')[0]
-    if (checkbox.checked) {
-      checkbox.click()
-    }
-  })
-}
 
 function openInNewTab(type) {
-  const ids = type.map(segment => segment.getElementsByClassName('segment-button')[0].dataset.segId)
+  const ids = []
+  for (let seg of type) {
+    ids.push(seg.nextElementSibling.firstElementChild.textContent)
+  }
 
   if (!ids) return
 
-  openSegmentsInNewTab(ids)
-}
+  const jsonHash = JSON.parse(decodeURIComponent(window.location.hash).substring(2))
+  const selectedLayerName = jsonHash.selectedLayer.layer
+  let selectedLayer = null
 
+  if (!selectedLayerName) return
 
-function openSegmentsInNewTab(ids) {
-
-  function prepareState(ids) {
-    const state = viewer.saver.pull()
-
-    state.state.layers.forEach(layer => {
-      if (layer.type !== 'segmentation_with_graph') return
-
-      layer.segments = ids
-      layer.hiddenSegments = []
-    })
-
-    return state
-  }
-
-  function addToLS(state) {
-    const stateId = Dock.getRandomHexString()
-    const stateKey = 'neuroglancerSaveState_v2'
-    const lsName = stateKey + '-' + stateId
-    
-    // Source: neuroglancer/save_state/savet_state.ts -> SaveState -> robustSet()
-    while (true) {
-      try {
-        localStorage.setItem(lsName, JSON.stringify(state))
-        let stateManager = localStorage.getItem(stateKey)
-        if (stateManager) {
-          stateManager = JSON.parse(stateManager)
-          stateManager.push(stateId)
-          localStorage.setItem(stateKey, JSON.stringify(stateManager))
-        }
-        break
-      }
-      catch (e) {
-        const manager = JSON.parse(localStorage.getItem(stateKey))
-        if (!manager.length) throw e
-
-        const targets = manager.splice(0, 1);
-        const serializedManager = JSON.stringify(manager)
-        localStorage.setItem(stateKey, serializedManager)
-        targets.forEach(key => localStorage.removeItem(`${stateKey}-${key}`))
-      }
+  jsonHash.layers.forEach(layer => {
+    if (layer.name === selectedLayerName) {
+      selectedLayer = layer
     }
+  })
+  
+  const newSegs = []
+  selectedLayer.segments.forEach(segment => {
+    if (segment[0] === '!') {
+      segment = segment.substring(1)
+    }
+    if (ids.includes(segment)) {
+      newSegs.push(segment)
+    }
+  })
 
-    return stateId
-  }
+  if (!newSegs.length) return
 
-  function openInNewTab(stateId) {
-    const url = new URL(unsafeWindow.location.href)
+  selectedLayer.segments = newSegs
 
-    unsafeWindow.open(url.origin + '/?local_id=' + stateId, '_blank')
-  }
-
-  const newState = prepareState(ids)
-  const stateId = addToLS(newState)
-  openInNewTab(stateId)
+  const newUrl = window.location.origin + '/#!' + JSON.stringify(jsonHash)
+  unsafeWindow.open(newUrl, '_blank')
 }
+
 
 function remove(type) {
-  type.forEach(segment => segment.getElementsByClassName('segment-button')[0].click())
+  for (let seg of type) {
+    seg.nextElementSibling.nextElementSibling.click()
+  }
 }
 
 function copy(type) {
-  const ids = type.map(segment => segment.getElementsByClassName('segment-button')[0].dataset.segId)
+  const ids = []
+  for (let seg of type) {
+    ids.push(seg.nextElementSibling.firstElementChild.textContent)
+  }
 
   navigator.clipboard.writeText(ids.join('\r\n'))
 }
@@ -494,9 +344,6 @@ function main() {
   addPickr()
   addActionsMenu()
 }
-
-
-
 
 
 
